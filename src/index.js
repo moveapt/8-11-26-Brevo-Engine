@@ -201,6 +201,18 @@ export default {
       return json({ ok: true, service: "moveAPT email engine" });
     }
 
+    // TEMPORARY DEBUG ENDPOINT — remove after troubleshooting.
+    // Reveals only the length/first+last char of ADMIN_TOKEN, never the full value.
+    if (url.pathname === "/api/debug-token" && request.method === "GET") {
+      const t = env.ADMIN_TOKEN || "";
+      return json({
+        isSet: Boolean(env.ADMIN_TOKEN),
+        length: t.length,
+        firstChar: t[0] || null,
+        lastChar: t[t.length - 1] || null
+      });
+    }
+
     if (url.pathname === "/api/signup" && request.method === "POST") {
       const response = await handleSignup(request, env);
       const headers = new Headers(response.headers);
