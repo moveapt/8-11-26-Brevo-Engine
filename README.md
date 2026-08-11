@@ -10,7 +10,7 @@ A small, Cloudflare-native email marketing engine for the moveAPT pre-launch:
 
 ## Architecture
 
-Cloudflare Pages/site -> Worker `/api/signup` -> Brevo Contacts
+Cloudflare Pages `/api/waitlist` -> Worker `/api/signup` -> Turnstile Siteverify -> Brevo Contacts
 Cloudflare Cron -> Worker `scheduled()` -> Brevo transactional email
 
 ## Required secrets / variables
@@ -22,6 +22,7 @@ Set these in Cloudflare:
 - `BREVO_SENDER_EMAIL` — verified Brevo sender email
 - `BREVO_SENDER_NAME` — e.g. `moveAPT`
 - `ADMIN_TOKEN` — random admin secret used for test/manual endpoints
+- `TURNSTILE_SECRET` — secret key paired with the website Turnstile site key
 
 Use Wrangler secrets:
 
@@ -31,6 +32,7 @@ npx wrangler secret put BREVO_LIST_ID
 npx wrangler secret put BREVO_SENDER_EMAIL
 npx wrangler secret put BREVO_SENDER_NAME
 npx wrangler secret put ADMIN_TOKEN
+npx wrangler secret put TURNSTILE_SECRET
 ```
 
 ## Deploy
@@ -52,11 +54,12 @@ Body:
 ```json
 {
   "email": "person@example.com",
-  "firstName": "Jane"
+  "firstName": "Jane",
+  "token": "TURNSTILE_TOKEN"
 }
 ```
 
-Adds/updates the person in the configured Brevo list.
+Validates the Turnstile token server-side, then adds/updates the person in the configured Brevo list. New contacts receive the welcome email when the sender is configured.
 
 ### `POST /api/test-send`
 

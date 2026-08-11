@@ -16,6 +16,7 @@ keep_vars = true
 # BREVO_SENDER_EMAIL = "earlyaccess@invite.moveapt.com"
 # BREVO_SENDER_NAME = "MoveApt Early Access"
 # ADMIN_TOKEN = ""
+# TURNSTILE_SECRET = ""
 
 [triggers]
 

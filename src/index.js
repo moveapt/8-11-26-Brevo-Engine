@@ -3,10 +3,10 @@ const JSON_HEADERS = {
   "cache-control": "no-store"
 };
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: JSON_HEADERS
+    headers: { ...JSON_HEADERS, ...extraHeaders }
   });
 }
 
@@ -24,6 +24,13 @@ function emailLooksValid(email) {
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch { return { raw: text }; }
+}
+
 async function brevoFetch(path, env, options = {}) {
   const response = await fetch(`https://api.brevo.com/v3${path}`, {
     ...options,
@@ -35,11 +42,7 @@ async function brevoFetch(path, env, options = {}) {
     }
   });
 
-  const text = await response.text();
-  let body;
-  try { body = text ? JSON.parse(text) : {}; }
-  catch { body = { raw: text }; }
-
+  const body = await parseJsonResponse(response);
   if (!response.ok) {
     throw new Error(`Brevo ${response.status}: ${JSON.stringify(body)}`);
   }
@@ -47,8 +50,13 @@ async function brevoFetch(path, env, options = {}) {
 }
 
 async function addContact(email, firstName, env) {
-  return brevoFetch("/contacts", env, {
+  const response = await fetch("https://api.brevo.com/v3/contacts", {
     method: "POST",
+    headers: {
+      "accept": "application/json",
+      "content-type": "application/json",
+      "api-key": env.BREVO_API_KEY
+    },
     body: JSON.stringify({
       email,
       attributes: firstName ? { FNAME: firstName } : {},
@@ -56,6 +64,16 @@ async function addContact(email, firstName, env) {
       updateEnabled: true
     })
   });
+
+  const body = await parseJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(`Brevo ${response.status}: ${JSON.stringify(body)}`);
+  }
+
+  return {
+    status: response.status === 204 ? "duplicate" : "created",
+    body
+  };
 }
 
 async function sendEmail({ to, subject, htmlContent, env }) {
@@ -73,6 +91,24 @@ async function sendEmail({ to, subject, htmlContent, env }) {
   });
 }
 
+async function verifyTurnstile(token, remoteip, env) {
+  const form = new FormData();
+  form.append("secret", env.TURNSTILE_SECRET);
+  form.append("response", token);
+  if (remoteip) form.append("remoteip", remoteip);
+
+  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    body: form
+  });
+
+  const result = await parseJsonResponse(response);
+  return {
+    ok: response.ok && result.success === true && result.action === "waitlist_signup",
+    result
+  };
+}
+
 async function listBrevoContacts(env) {
   return brevoFetch(
     `/contacts?limit=1000&offset=0&listIds=${encodeURIComponent(env.BREVO_LIST_ID)}`,
@@ -82,6 +118,7 @@ async function listBrevoContacts(env) {
 }
 
 function requireAdmin(request, env) {
+  if (!env.ADMIN_TOKEN) return false;
   const auth = request.headers.get("authorization") || "";
   return auth === `Bearer ${env.ADMIN_TOKEN}`;
 }
@@ -99,33 +136,85 @@ function weeklyHtml() {
   </html>`;
 }
 
-async function handleSignup(request, env) {
+function welcomeHtml() {
+  return `
+  <html>
+    <body style="font-family:Arial,sans-serif;line-height:1.6;max-width:640px;margin:40px auto;padding:20px">
+      <h1>Welcome to moveAPT</h1>
+      <p>Thanks for joining the early-access list — you're in.</p>
+      <p>We'll email you as soon as we launch.</p>
+      <p>— The moveAPT team</p>
+    </body>
+  </html>`;
+}
+
+async function handleSignup(request, env, ctx) {
   let body;
   try { body = await request.json(); }
   catch { return json({ error: "Invalid JSON" }, 400); }
 
   const email = String(body.email || "").trim().toLowerCase();
   const firstName = String(body.firstName || "").trim();
+  const token = String(body.token || "").trim();
+  const remoteip = body.remoteip ? String(body.remoteip) : undefined;
 
   if (!emailLooksValid(email)) {
     return json({ error: "Please provide a valid email address." }, 400);
   }
 
-  if (!env.BREVO_API_KEY || !env.BREVO_LIST_ID) {
-    return json({ error: "Server email configuration is incomplete." }, 500);
+  if (!token) {
+    return json({ error: "Missing verification token." }, 400);
+  }
+
+  if (!env.BREVO_API_KEY || !env.BREVO_LIST_ID || !env.TURNSTILE_SECRET) {
+    console.error("Missing BREVO_API_KEY, BREVO_LIST_ID, or TURNSTILE_SECRET");
+    return json({ error: "Server email configuration is incomplete." }, 503);
+  }
+
+  const listId = Number(env.BREVO_LIST_ID);
+  if (!Number.isInteger(listId) || listId <= 0) {
+    console.error("BREVO_LIST_ID must be a positive integer");
+    return json({ error: "Server email configuration is invalid." }, 503);
   }
 
   try {
-    await addContact(email, firstName, env);
-    return json({ ok: true, message: "You're on the moveAPT list." });
+    const verification = await verifyTurnstile(token, remoteip, env);
+    if (!verification.ok) {
+      console.warn("Turnstile verification failed", verification.result);
+      return json({ error: "Verification failed. Please refresh and try again." }, 403);
+    }
+
+    const contact = await addContact(email, firstName, env);
+
+    if (contact.status === "created" && env.BREVO_SENDER_EMAIL) {
+      ctx.waitUntil(
+        sendEmail({
+          to: email,
+          subject: "You're on the moveAPT waitlist",
+          htmlContent: welcomeHtml(),
+          env
+        }).catch(error => console.error("Welcome email failed", error))
+      );
+    }
+
+    return json({
+      ok: true,
+      status: contact.status,
+      message: contact.status === "duplicate"
+        ? "You're already on the list! We'll reach out when we launch."
+        : "You're on the list! We'll be in touch soon."
+    });
   } catch (error) {
-    console.error(error);
-    return json({ error: "Could not add contact." }, 502);
+    console.error("Signup failed", error);
+    return json({ error: "Could not add contact. Please try again." }, 502);
   }
 }
 
 async function handleTestSend(request, env) {
   if (!requireAdmin(request, env)) return json({ error: "Unauthorized" }, 401);
+  if (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL) {
+    return json({ error: "BREVO_API_KEY and BREVO_SENDER_EMAIL are required." }, 503);
+  }
 
   let body;
   try { body = await request.json(); }
@@ -158,6 +247,10 @@ async function handleWeeklySend(request, env) {
 }
 
 async function sendWeekly(env, subject, html) {
+  if (!env.BREVO_API_KEY || !env.BREVO_LIST_ID || !env.BREVO_SENDER_EMAIL) {
+    return json({ error: "BREVO_API_KEY, BREVO_LIST_ID, and BREVO_SENDER_EMAIL are required." }, 503);
+  }
+
   try {
     const data = await listBrevoContacts(env);
     const contacts = (data.contacts || [])
@@ -187,37 +280,34 @@ async function sendWeekly(env, subject, html) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const origin = request.headers.get("origin") || "*";
 
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: corsHeaders(request.headers.get("origin") || "*")
+        headers: corsHeaders(origin)
       });
     }
 
     if (url.pathname === "/api/health" && request.method === "GET") {
-      return json({ ok: true, service: "moveAPT email engine" });
-    }
-
-    // TEMPORARY DEBUG ENDPOINT — remove after troubleshooting.
-    // Reveals only the length/first+last char of ADMIN_TOKEN, never the full value.
-    if (url.pathname === "/api/debug-token" && request.method === "GET") {
-      const t = env.ADMIN_TOKEN || "";
       return json({
-        isSet: Boolean(env.ADMIN_TOKEN),
-        length: t.length,
-        firstChar: t[0] || null,
-        lastChar: t[t.length - 1] || null
+        ok: true,
+        service: "moveAPT email engine",
+        configured: {
+          brevo: Boolean(env.BREVO_API_KEY && env.BREVO_LIST_ID),
+          sender: Boolean(env.BREVO_SENDER_EMAIL),
+          turnstile: Boolean(env.TURNSTILE_SECRET),
+          admin: Boolean(env.ADMIN_TOKEN)
+        }
       });
     }
 
     if (url.pathname === "/api/signup" && request.method === "POST") {
-      const response = await handleSignup(request, env);
+      const response = await handleSignup(request, env, ctx);
       const headers = new Headers(response.headers);
-      Object.entries(corsHeaders(request.headers.get("origin") || "*"))
-        .forEach(([k, v]) => headers.set(k, v));
+      Object.entries(corsHeaders(origin)).forEach(([k, v]) => headers.set(k, v));
       return new Response(response.body, { status: response.status, headers });
     }
 
@@ -236,8 +326,6 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    // Cloudflare invokes this every Monday at the cron time in wrangler.toml.
-    // waitUntil keeps the async Brevo request alive after the scheduled event starts.
     ctx.waitUntil(sendWeekly(env));
   }
 };
