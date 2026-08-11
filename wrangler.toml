@@ -1,4 +1,4 @@
-name = "moveapt-email-engine"
+name = "8-11-26-brevo-engine"
 main = "src/index.js"
 compatibility_date = "2026-08-11"
 

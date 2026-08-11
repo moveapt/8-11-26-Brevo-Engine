@@ -37,3 +37,10 @@ Authorization: Bearer <ADMIN_TOKEN>
 If you get {"error":"Unauthorized"}, the value in Cloudflare does not exactly
 match the bearer token you sent. Re-save ADMIN_TOKEN in Worker settings and
 redeploy before testing again.
+
+DEPLOYMENT NAME CHECK
+---------------------
+wrangler.toml is set to the existing Cloudflare Worker name:
+8-11-26-brevo-engine
+
+This must match the Worker shown in Cloudflare when using Workers Builds.

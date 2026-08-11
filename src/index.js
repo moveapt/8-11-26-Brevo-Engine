@@ -31,8 +31,18 @@ async function parseJsonResponse(response) {
   catch { return { raw: text }; }
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function brevoFetch(path, env, options = {}) {
-  const response = await fetch(`https://api.brevo.com/v3${path}`, {
+  const response = await fetchWithTimeout(`https://api.brevo.com/v3${path}`, {
     ...options,
     headers: {
       "accept": "application/json",
@@ -50,7 +60,7 @@ async function brevoFetch(path, env, options = {}) {
 }
 
 async function addContact(email, firstName, env) {
-  const response = await fetch("https://api.brevo.com/v3/contacts", {
+  const response = await fetchWithTimeout("https://api.brevo.com/v3/contacts", {
     method: "POST",
     headers: {
       "accept": "application/json",
@@ -97,7 +107,7 @@ async function verifyTurnstile(token, remoteip, env) {
   form.append("response", token);
   if (remoteip) form.append("remoteip", remoteip);
 
-  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+  const response = await fetchWithTimeout("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
     method: "POST",
     body: form
   });
