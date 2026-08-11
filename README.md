@@ -1,4 +1,4 @@
-# moveAPT Email Engine — Cloudflare Worker + Brevo
+# moveAPT Email Engine — Cloudflare Worker + Brevo ESP
 
 A small, Cloudflare-native email marketing engine for the moveAPT pre-launch:
 - Waitlist signup endpoint
