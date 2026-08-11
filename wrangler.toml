@@ -1,0 +1,19 @@
+name = "moveapt-email-engine"
+main = "src/index.js"
+compatibility_date = "2026-08-11"
+
+[vars]
+# Set these in Cloudflare Worker settings or with wrangler secret put.
+# BREVO_API_KEY = ""
+# BREVO_LIST_ID = "123"
+# BREVO_SENDER_EMAIL = "hello@example.com"
+# BREVO_SENDER_NAME = "moveAPT"
+# ADMIN_TOKEN = ""
+
+[triggers]
+# Every Monday at 14:00 UTC. Change as needed.
+crons = ["0 14 * * 1"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
