@@ -1,4 +1,4 @@
-# moveAPT Brevo Email Worker:No Turnstile
+# moveAPT Brevo Email Worker - No Turnstile
 
 Cloudflare Worker used by the moveAPT Pages waitlist.
 
