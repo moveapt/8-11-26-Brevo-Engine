@@ -1,4 +1,4 @@
-# moveAPT Brevo Email Worker --No Turnstile
+# moveAPT Brevo Email Worker — No Turnstile
 
 Cloudflare Worker used by the moveAPT Pages waitlist.
 
@@ -18,6 +18,15 @@ Set these in Cloudflare **Workers & Pages -> this Worker -> Settings -> Variable
 
 **No `TURNSTILE_SECRET` is required. Turnstile is intentionally removed.**
 
+## Brevo contact attribute required
+
+Create a Brevo contact attribute before deploying this version:
+
+- Attribute name: `MOVING_TO`
+- Type: Text
+
+The Worker stores the form's `movingTo` value in that Brevo contact attribute.
+
 ## Endpoints
 
 - `GET /api/health` — configuration health check
@@ -25,7 +34,7 @@ Set these in Cloudflare **Workers & Pages -> this Worker -> Settings -> Variable
 - `POST /api/test-send` — admin-only test email
 - `POST /api/send-weekly` — admin-only weekly send
 
-The signup endpoint accepts the payload forwarded by the Pages function, including `email`, `movingTo`, `howHeard`, `companyWebsite`, and `formStartedAt`. `companyWebsite` is treated as a honeypot and very fast submissions may be silently filtered.
+The signup endpoint accepts the payload forwarded by the Pages function, including `email`, `movingTo`, `howHeard`, `companyWebsite`, and `formStartedAt`. `movingTo` is saved to the Brevo `MOVING_TO` contact attribute. `companyWebsite` is treated as a honeypot and very fast submissions may be silently filtered.
 
 ## Deploy
 

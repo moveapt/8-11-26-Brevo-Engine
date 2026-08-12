@@ -59,7 +59,7 @@ async function brevoFetch(path, env, options = {}) {
   return body;
 }
 
-async function addContact(email, firstName, env) {
+async function addContact(email, firstName, movingTo, env) {
   const response = await fetchWithTimeout("https://api.brevo.com/v3/contacts", {
     method: "POST",
     headers: {
@@ -69,7 +69,10 @@ async function addContact(email, firstName, env) {
     },
     body: JSON.stringify({
       email,
-      attributes: firstName ? { FNAME: firstName } : {},
+      attributes: {
+        ...(firstName ? { FNAME: firstName } : {}),
+        ...(movingTo ? { MOVING_TO: movingTo } : {})
+      },
       listIds: [Number(env.BREVO_LIST_ID)],
       updateEnabled: true
     })
@@ -147,11 +150,16 @@ async function handleSignup(request, env, ctx) {
 
   const email = String(body.email || "").trim().toLowerCase();
   const firstName = String(body.firstName || body.name || "").trim();
+  const movingTo = String(body.movingTo || "").trim();
   const companyWebsite = String(body.companyWebsite || "").trim();
   const formStartedAt = Number(body.formStartedAt || 0);
 
   if (!emailLooksValid(email)) {
     return json({ error: "Please provide a valid email address." }, 400);
+  }
+
+  if (movingTo.length < 2 || movingTo.length > 120) {
+    return json({ error: "Please provide where you are moving to." }, 400);
   }
 
   // Turnstile has intentionally been removed. The Pages function already
@@ -189,7 +197,7 @@ async function handleSignup(request, env, ctx) {
   }
 
   try {
-    const contact = await addContact(email, firstName, env);
+    const contact = await addContact(email, firstName, movingTo, env);
 
     if (contact.status === "created" && env.BREVO_SENDER_EMAIL) {
       ctx.waitUntil(
