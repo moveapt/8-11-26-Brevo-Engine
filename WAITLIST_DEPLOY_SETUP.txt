@@ -1,46 +1,33 @@
-moveAPT EMAIL WORKER — REQUIRED CLOUDFLARE VARIABLES
-=====================================================
+moveAPT WAITLIST DEPLOY SETUP — NO TURNSTILE
 
-Set these on the Worker in Cloudflare Dashboard -> Workers & Pages ->
-moveAPT email worker -> Settings -> Variables and Secrets:
+FLOW
+Browser form -> Cloudflare Pages /api/waitlist -> Email Worker /api/signup -> Brevo
 
-BREVO_API_KEY       = your Brevo API key              (SECRET)
-BREVO_LIST_ID       = your numeric Brevo list ID      (SECRET or text)
-BREVO_SENDER_EMAIL  = verified Brevo sender address   (SECRET or text)
-BREVO_SENDER_NAME   = moveAPT                         (text; optional)
-TURNSTILE_SECRET    = secret for the site's Turnstile widget (SECRET)
-ADMIN_TOKEN         = your admin bearer token          (SECRET)
+WORKER REQUIRED VARIABLES / SECRETS
+BREVO_API_KEY
+BREVO_LIST_ID
+BREVO_SENDER_EMAIL
+BREVO_SENDER_NAME   (optional)
+ADMIN_TOKEN
 
-The website calls:
+TURNSTILE_SECRET is NOT used and can be deleted from the Worker.
+
+PAGES REQUIRED VARIABLE
+EMAIL_WORKER_URL=https://<your-worker>.workers.dev
+
+SIGNUP ENDPOINT
 POST /api/signup
-with { email, token, remoteip }.
+Content-Type: application/json
 
-The Worker now:
-1. validates the Turnstile token server-side,
-2. requires action=waitlist_signup,
-3. creates/updates the Brevo contact,
-4. returns created vs duplicate,
-5. sends the welcome email for new contacts when BREVO_SENDER_EMAIL is set.
+Example body:
+{
+  "email": "test@example.com",
+  "movingTo": "New York",
+  "howHeard": "Google",
+  "companyWebsite": "",
+  "formStartedAt": 1786550000000
+}
 
-The temporary /api/debug-token endpoint has been REMOVED.
-
-Health check:
+HEALTH CHECK
 GET /api/health
-
-It reports only whether each required setting exists; it never prints secrets.
-
-IMPORTANT ADMIN TOKEN TEST
---------------------------
-For /api/test-send and /api/send-weekly, the header must be exactly:
-Authorization: Bearer <ADMIN_TOKEN>
-
-If you get {"error":"Unauthorized"}, the value in Cloudflare does not exactly
-match the bearer token you sent. Re-save ADMIN_TOKEN in Worker settings and
-redeploy before testing again.
-
-DEPLOYMENT NAME CHECK
----------------------
-wrangler.toml is set to the existing Cloudflare Worker name:
-8-11-26-brevo-engine
-
-This must match the Worker shown in Cloudflare when using Workers Builds.
+Expected configured.brevo=true after BREVO_API_KEY and BREVO_LIST_ID are set.

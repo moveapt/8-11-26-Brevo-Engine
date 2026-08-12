@@ -101,24 +101,6 @@ async function sendEmail({ to, subject, htmlContent, env }) {
   });
 }
 
-async function verifyTurnstile(token, remoteip, env) {
-  const form = new FormData();
-  form.append("secret", env.TURNSTILE_SECRET);
-  form.append("response", token);
-  if (remoteip) form.append("remoteip", remoteip);
-
-  const response = await fetchWithTimeout("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-    method: "POST",
-    body: form
-  });
-
-  const result = await parseJsonResponse(response);
-  return {
-    ok: response.ok && result.success === true && result.action === "waitlist_signup",
-    result
-  };
-}
-
 async function listBrevoContacts(env) {
   return brevoFetch(
     `/contacts?limit=1000&offset=0&listIds=${encodeURIComponent(env.BREVO_LIST_ID)}`,
@@ -164,20 +146,39 @@ async function handleSignup(request, env, ctx) {
   catch { return json({ error: "Invalid JSON" }, 400); }
 
   const email = String(body.email || "").trim().toLowerCase();
-  const firstName = String(body.firstName || "").trim();
-  const token = String(body.token || "").trim();
-  const remoteip = body.remoteip ? String(body.remoteip) : undefined;
+  const firstName = String(body.firstName || body.name || "").trim();
+  const companyWebsite = String(body.companyWebsite || "").trim();
+  const formStartedAt = Number(body.formStartedAt || 0);
 
   if (!emailLooksValid(email)) {
     return json({ error: "Please provide a valid email address." }, 400);
   }
 
-  if (!token) {
-    return json({ error: "Missing verification token." }, 400);
+  // Turnstile has intentionally been removed. The Pages function already
+  // performs input validation and forwards anti-spam fields to this Worker.
+  // Silently accept obvious bot submissions so bots do not learn the filter.
+  if (companyWebsite) {
+    return json({
+      ok: true,
+      status: "filtered",
+      message: "You're on the list! We'll be in touch soon."
+    });
   }
 
-  if (!env.BREVO_API_KEY || !env.BREVO_LIST_ID || !env.TURNSTILE_SECRET) {
-    console.error("Missing BREVO_API_KEY, BREVO_LIST_ID, or TURNSTILE_SECRET");
+  // Reject impossibly-fast submissions when a valid form start timestamp is sent.
+  if (Number.isFinite(formStartedAt) && formStartedAt > 0) {
+    const elapsedMs = Date.now() - formStartedAt;
+    if (elapsedMs >= 0 && elapsedMs < 1200) {
+      return json({
+        ok: true,
+        status: "filtered",
+        message: "You're on the list! We'll be in touch soon."
+      });
+    }
+  }
+
+  if (!env.BREVO_API_KEY || !env.BREVO_LIST_ID) {
+    console.error("Missing BREVO_API_KEY or BREVO_LIST_ID");
     return json({ error: "Server email configuration is incomplete." }, 503);
   }
 
@@ -188,12 +189,6 @@ async function handleSignup(request, env, ctx) {
   }
 
   try {
-    const verification = await verifyTurnstile(token, remoteip, env);
-    if (!verification.ok) {
-      console.warn("Turnstile verification failed", verification.result);
-      return json({ error: "Verification failed. Please refresh and try again." }, 403);
-    }
-
     const contact = await addContact(email, firstName, env);
 
     if (contact.status === "created" && env.BREVO_SENDER_EMAIL) {
@@ -308,7 +303,6 @@ export default {
         configured: {
           brevo: Boolean(env.BREVO_API_KEY && env.BREVO_LIST_ID),
           sender: Boolean(env.BREVO_SENDER_EMAIL),
-          turnstile: Boolean(env.TURNSTILE_SECRET),
           admin: Boolean(env.ADMIN_TOKEN)
         }
       });
