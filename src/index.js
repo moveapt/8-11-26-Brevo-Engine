@@ -21,7 +21,7 @@ function corsHeaders(origin = "*") {
 function emailLooksValid(email) {
   return typeof email === "string" &&
     email.length <= 254 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
 }
 
 async function parseJsonResponse(response) {
@@ -89,7 +89,13 @@ async function addContact(email, firstName, movingTo, env) {
   };
 }
 
+// Transactional sends are deliberately restricted to ONE recipient.
+// Never pass a subscriber array here: Brevo would expose all addresses in To.
 async function sendEmail({ to, subject, htmlContent, env }) {
+  if (typeof to !== "string" || !emailLooksValid(to)) {
+    throw new Error("sendEmail requires exactly one valid recipient email address.");
+  }
+
   return brevoFetch("/smtp/email", env, {
     method: "POST",
     body: JSON.stringify({
@@ -97,7 +103,7 @@ async function sendEmail({ to, subject, htmlContent, env }) {
         email: env.BREVO_SENDER_EMAIL,
         name: env.BREVO_SENDER_NAME || "moveAPT"
       },
-      to: Array.isArray(to) ? to : [{ email: to }],
+      to: [{ email: to }],
       subject,
       htmlContent
     })
@@ -267,27 +273,45 @@ async function sendWeekly(env, subject, html) {
   try {
     const data = await listBrevoContacts(env);
     const contacts = (data.contacts || [])
-      .filter(c => c.email && !c.emailBlacklisted)
-      .map(c => ({ email: c.email, name: c.attributes?.FNAME || undefined }));
+      .filter(c => c.email && !c.emailBlacklisted && emailLooksValid(c.email))
+      .map(c => c.email);
 
     if (!contacts.length) {
-      return json({ ok: true, sent: 0, message: "No contacts in the Brevo list." });
+      return json({ ok: true, sent: 0, failed: 0, message: "No contacts in the Brevo list." });
     }
 
-    const result = await sendEmail({
-      to: contacts,
-      subject: subject || "moveAPT weekly update",
-      htmlContent: html || weeklyHtml(),
-      env
-    });
+    // Send sequentially, with a separate Brevo transactional request per contact.
+    // This guarantees each message has exactly one address in its To field.
+    let sent = 0;
+    let failed = 0;
+    const failures = [];
+
+    for (const email of contacts) {
+      try {
+        await sendEmail({
+          to: email,
+          subject: subject || "moveAPT weekly update",
+          htmlContent: html || weeklyHtml(),
+          env
+        });
+        sent += 1;
+      } catch (error) {
+        failed += 1;
+        failures.push(email);
+        console.error("Weekly email failed for one recipient", email, error);
+      }
+    }
 
     return json({
-      ok: true,
-      sent: contacts.length,
-      messageId: result.messageId || null
-    });
+      ok: failed === 0,
+      total: contacts.length,
+      sent,
+      failed,
+      failedRecipients: failures,
+      message: `Weekly update processed: ${sent} sent, ${failed} failed. Each email was sent as a separate message.`
+    }, failed ? 207 : 200);
   } catch (error) {
-    console.error(error);
+    console.error("Weekly send failed before recipient processing", error);
     return json({ error: String(error.message || error) }, 502);
   }
 }
