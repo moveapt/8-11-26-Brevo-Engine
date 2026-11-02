@@ -158,11 +158,29 @@ function weeklyHtml() {
 function welcomeHtml() {
   return `
   <html>
-    <body style="font-family:Arial,sans-serif;line-height:1.6;max-width:640px;margin:40px auto;padding:20px">
-      <h1>Welcome to moveAPT</h1>
-      <p>Thanks for joining the early-access list — you're in.</p>
-      <p>We'll email you as soon as we launch.</p>
-      <p>— The moveAPT team</p>
+    <body style="margin:0;padding:0;background:#f7f7f7;font-family:Arial,Helvetica,sans-serif;color:#242424;line-height:1.6">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f7f7f7;padding:32px 12px">
+        <tr><td align="center">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background:#ffffff">
+            <tr>
+              <td style="padding:28px 32px 18px;border-bottom:1px solid #eeeeee">
+                <a href="https://moveapt.com/" target="_blank" style="text-decoration:none;color:#202020;font-size:30px;font-weight:700;letter-spacing:-1.2px">
+                  <span style="font-weight:500">move</span><span>APT</span>
+                </a>
+              </td>
+            </tr>
+            <tr><td style="padding:24px 32px 36px">
+              <h1 style="margin:0 0 24px;font-size:28px;line-height:1.2;font-weight:700;color:#202020">Welcome to moveAPT</h1>
+              <p style="margin:0 0 18px;font-size:17px">Thanks for joining the early-access list — you're in.</p>
+              <p style="margin:0 0 18px;font-size:17px">We'll email you as soon as we launch.</p>
+              <p style="margin:0;font-size:17px">— The moveAPT team</p>
+            </td></tr>
+            <tr><td style="padding:18px 32px;border-top:1px solid #eeeeee;color:#777777;font-size:12px">
+              <a href="https://moveapt.com/" target="_blank" style="color:#777777;text-decoration:none">moveapt.com</a>
+            </td></tr>
+          </table>
+        </td></tr>
+      </table>
     </body>
   </html>`;
 }
