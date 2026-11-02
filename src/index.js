@@ -21,7 +21,7 @@ function corsHeaders(origin = "*") {
 function emailLooksValid(email) {
   return typeof email === "string" &&
     email.length <= 254 &&
-    /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 async function parseJsonResponse(response) {
